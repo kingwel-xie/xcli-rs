@@ -1,7 +1,6 @@
 use log::{debug, info, LevelFilter};
 use xcli::*;
 
-
 fn main() {
     env_logger::init();
 
