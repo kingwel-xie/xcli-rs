@@ -3,6 +3,12 @@ name = "xcli"
 version = "0.1.0"
 authors = ["Kingwel Xie <kingwel.xie@139.com>"]
 edition = "2018"
+description = "xcli, a CLI implementation based on rustyline"
+#documentation = "http://docs.rs/rustyline"
+readme = "README.md"
+keywords = ["cli"]
+categories = ["command-line-utilities"]
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

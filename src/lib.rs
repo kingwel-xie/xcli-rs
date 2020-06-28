@@ -30,13 +30,12 @@ pub enum CmdExeCode {
     BadArgument(Option<String>),
 }
 
-#[derive(Default)]
 pub struct App<'a> {
     pub(crate) name: String,
     pub(crate) version: Option<&'a str>,
     pub(crate) author: Option<&'a str>,
-    pub(crate) command: Command<'a>,
-    pub(crate) rl: Option<Rc<RefCell<Editor<PrefixCompleter>>>>,
+    pub(crate) tree: Command<'a>,
+    pub(crate) rl: Rc<RefCell<Editor<PrefixCompleter>>>,
 }
 
 
@@ -108,10 +107,14 @@ impl<'a> App<'a> {
                 }))
             ;
 
+        let rl = Rc::new(RefCell::new(Editor::<PrefixCompleter>::new()));
+
         App {
             name: n.into(),
-            command: builtin_cmds,
-            ..Default::default()
+            version: None,
+            author: None,
+            tree: builtin_cmds,
+            rl: rl,
         }
     }
 
@@ -135,52 +138,48 @@ impl<'a> App<'a> {
     }
     /// append a sub tree of commands
     pub fn add_subcommand(&mut self, subcmd: Command<'a>) {
-        self.command.subcommands.push(subcmd);
+        self.tree.subcommands.push(subcmd);
     }
 
     pub fn show_tree(&self) {
-        self.rl.as_ref().unwrap().borrow().helper().unwrap().print_tree("");
+        self.rl.borrow().helper().unwrap().print_tree("");
         // self.command.for_each("", &mut|c, path| {
         //     println!("{} - {}", path, c.name)
         // });
     }
 
     fn _run(&self, args: Vec<&str>) -> CmdExeCode {
-        self.command.run_sub(&self, &args)
+        self.tree.run_sub(&self, &args)
     }
 
-    pub fn run(mut self) {
 
+
+    pub fn run(self) {
         info!("starting CLI loop...");
 
-        // `()` can be used when no completer is required
-        let rl = Rc::new(RefCell::new(Editor::<PrefixCompleter>::new()));
-        rl.borrow_mut().set_completion_type(CompletionType::List);
-        rl.borrow_mut().set_helper(Some(PrefixCompleter::new(&self.command)));
+        self.rl.borrow_mut().set_completion_type(CompletionType::List);
+        self.rl.borrow_mut().set_helper(Some(PrefixCompleter::new(&self.tree)));
 
-        if rl.borrow_mut().load_history("history.txt").is_err() {
+        if self.rl.borrow_mut().load_history("history.txt").is_err() {
             println!("No previous history.");
         }
 
-        // set rl.clone to App
-        self.rl = Some(rl.clone());
-
         loop {
-            let readline = rl.borrow_mut().readline("# ");
+            let readline = self.rl.borrow_mut().readline("# ");
             let line = match readline {
                 Ok(line) => {
-                    rl.borrow_mut().add_history_entry(line.as_str());
+                    self.rl.borrow_mut().add_history_entry(line.as_str());
                     debug!("Line: {}", line);
                     line
                 },
                 Err(err) => {
                     println!("Error: {:?}", err);
-                    let l = rl.borrow_mut().readline("Do you realy want to quit? [Y/n]").unwrap_or("n".parse().unwrap());
+                    let l = self.rl.borrow_mut().readline("Do you realy want to quit? [y/N]").unwrap_or("n".parse().unwrap());
                     match l.as_str() {
                         "Y" | "y" => {
                             break
                         },
-                        _ => "".parse().unwrap(),
+                        _ => "".to_string(),
                     }
                 }
             };
@@ -196,7 +195,7 @@ impl<'a> App<'a> {
                 }
             }
         }
-        rl.borrow_mut().save_history("history.txt").unwrap();
+        self.rl.borrow_mut().save_history("history.txt").unwrap();
     }
 }
 
@@ -309,7 +308,7 @@ impl<'a> Command<'a> {
             // otherwise, show help message for this command
             if args.len() > 0 {
                 debug!("command without action, but with some args {:?}", args);
-                println!("unknown command {} run_cmd {:?}", self.name, args)
+                println!("Unknown command or arguments : {:?}", args)
             } else {
                 debug!("command with no action defined");
                 self.show_command_help();
@@ -474,12 +473,12 @@ impl Completer for PrefixCompleter {
 
 fn cli_help(app: &App, args: &Vec<&str>) -> CmdExeCode {
     if args.is_empty() {
-        app.command.show_subcommand_help();
+        app.tree.show_subcommand_help();
     } else {
-        if let Some(cmd) = app.command.locate_subcommand(args) {
+        if let Some(cmd) = app.tree.locate_subcommand(args) {
             cmd.show_command_help();
         } else {
-            println!("unknown command {} run_cmd {:?}", app.name, args)
+            println!("Unrecognized command {:?}", args)
         }
     }
     CmdExeCode::Ok
@@ -506,14 +505,14 @@ fn cli_log(_app: &App, args: &Vec<&str>) -> CmdExeCode {
 fn cli_mode(app: &App, args: &Vec<&str>) -> CmdExeCode {
     match args.len() {
         0 => {
-            let mode = app.rl.as_ref().unwrap().borrow_mut().config_mut().edit_mode();
+            let mode = app.rl.borrow_mut().config_mut().edit_mode();
             let mode_str = if mode == EditMode::Vi { "Vi"} else { "Emacs" };
             println!("Current edit mode is: {}", mode_str);
         },
         1 => {
             match args[0].to_lowercase().as_ref() {
-                "vi" => app.rl.as_ref().unwrap().borrow_mut().set_edit_mode(EditMode::Vi),
-                "emacs" => app.rl.as_ref().unwrap().borrow_mut().set_edit_mode(EditMode::Emacs),
+                "vi" => app.rl.borrow_mut().set_edit_mode(EditMode::Vi),
+                "emacs" => app.rl.borrow_mut().set_edit_mode(EditMode::Emacs),
                 bad => return CmdExeCode::BadArgument(Some(bad.to_string())),
             }
         },
