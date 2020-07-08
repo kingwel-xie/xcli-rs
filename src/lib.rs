@@ -413,6 +413,7 @@ pub struct PrefixNode {
     children: Vec<PrefixNode>,
 }
 
+/// Command tree node
 impl PrefixNode {
     /// Create a PrefixNode
     fn new(cmd :&Command) -> PrefixNode {
