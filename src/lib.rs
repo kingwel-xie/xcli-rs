@@ -1,3 +1,49 @@
+//! # xcli-rs
+//! 
+//! A CLI implementation in Rust that is based on Rustyline.
+//! 
+//! **Supported Platforms**
+//! * Unix
+//! * Windows
+//! * cmd.exe
+//! * Powershell
+//! * MacOS (not tested yet)
+//! 
+//! **Note**:
+//! * " quoted argument is not supported
+//! * No prompt is shown when running on non-tty device. Need a simple tweak on Rustyline...
+//! 
+//! ## Example
+//! ```rust
+//! use xcli::*;
+//! 
+//! fn main() {
+//!     let mut app = App::new("xCLI")
+//!         .version("v0.1")
+//!         .author("kingwel.xie@139.com");
+//! 
+//!     app.add_subcommand(Command::new("qwert")
+//!         .about("controls testing features")
+//!         .usage("qwert")
+//!         .action(|_app, _| -> CmdExeCode {
+//!             println!("qwert tested");
+//!             CmdExeCode::Ok
+//!         }));
+//! 
+//!     app.run();
+//! }
+//! ```
+//! 
+//! ## crates.io
+//! You can use this package in your project by adding the following
+//! to your `Cargo.toml`:
+//! 
+//! ```toml
+//! [dependencies]
+//! xcli = "0.1"
+//! ```
+
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::fmt::Debug;
@@ -30,6 +76,7 @@ pub enum CmdExeCode {
     BadArgument(Option<String>),
 }
 
+/// Xcli object
 pub struct App<'a> {
     pub(crate) name: String,
     pub(crate) version: Option<&'a str>,
@@ -38,7 +85,7 @@ pub struct App<'a> {
     pub(crate) rl: Rc<RefCell<Editor<PrefixCompleter>>>,
 }
 
-
+/// Command struct
 #[derive(Default, Clone)]
 pub struct Command<'a> {
     pub(crate) name: String,
@@ -53,6 +100,7 @@ pub struct Command<'a> {
 }
 
 impl<'a> App<'a> {
+    /// Create a new cli instance and return it
     pub fn new<S: Into<String>>(n: S) -> Self {
         // note we set the name of roor command to "", len = 0
         let builtin_cmds =  Command::new("")
@@ -118,20 +166,28 @@ impl<'a> App<'a> {
         }
     }
 
+    /// Get the name of this instance
     pub fn get_name(&self) -> &str {
         &self.name
     }
+
+    /// Get the author of this instance
     pub fn get_author(&self) -> &str {
         self.author.unwrap_or("")
     }
+
+    /// Get the version of this instance
     pub fn get_version(&self) -> &str {
         self.version.unwrap_or("")
     }
 
+    /// Set the author of this instance
     pub fn author<S: Into<&'a str>>(mut self, author: S) -> Self {
         self.author = Some(author.into());
         self
     }
+
+    /// Get the version of this instance
     pub fn version<S: Into<&'a str>>(mut self, ver: S) -> Self {
         self.version = Some(ver.into());
         self
@@ -141,6 +197,7 @@ impl<'a> App<'a> {
         self.tree.subcommands.push(subcmd);
     }
 
+    /// Show all commands and their subcommands like a tree
     pub fn show_tree(&self) {
         self.rl.borrow().helper().unwrap().print_tree("");
         // self.command.for_each("", &mut|c, path| {
@@ -148,12 +205,13 @@ impl<'a> App<'a> {
         // });
     }
 
+    /// Get the status return by args command
     fn _run(&self, args: Vec<&str>) -> CmdExeCode {
         self.tree.run_sub(&self, &args)
     }
 
 
-
+    /// Run the instance
     pub fn run(self) {
         info!("starting CLI loop...");
 
@@ -200,35 +258,49 @@ impl<'a> App<'a> {
 }
 
 impl<'a> Command<'a> {
+    /// Create a command
     pub fn new<S: Into<String>>(n: S) -> Self {
         Command {
             name: n.into(),
             ..Default::default()
         }
     }
+
+    /// Get the name of this command
     pub fn get_name(&self) -> &str {
         &self.name
     }
 
+    /// Set a CmdAction to this command
     pub fn action(mut self, action: CmdAction) -> Self {
         self.action = Some(action);
         self
     }
+
+    /// Set a description to this command
     pub fn about<S: Into<&'a str>>(mut self, about: S) -> Self {
         self.about = Some(about.into());
         self
     }
+
+    /// Set the usage to this command
     pub fn usage<S: Into<&'a str>>(mut self, about: S) -> Self {
         self.usage = Some(about.into());
         self
     }
+
+    /// Get all subcommands of this command
     pub fn get_subcommands(&self) -> &[Command<'a>] {
         &self.subcommands
     }
+
+    /// Add a subcommand to this command
     pub fn subcommand(mut self, subcmd: Command<'a>) -> Self {
         self.subcommands.push(subcmd);
         self
     }
+
+    /// Add more than one subcommand to this command, the given subcmds implements IntoIterator
     pub fn subcommands<I>(mut self, subcmds: I) -> Self
         where
             I: IntoIterator<Item = Command<'a>>,
@@ -319,6 +391,7 @@ impl<'a> Command<'a> {
         CmdExeCode::Ok
     }
 
+    ///
     pub fn for_each<F>(&self, path: &str, f: &mut F) where F: FnMut(&Self, &str) {
         f(&self, path);
         for a in self.get_subcommands() {
@@ -340,7 +413,9 @@ pub struct PrefixNode {
     children: Vec<PrefixNode>,
 }
 
+/// Command tree node
 impl PrefixNode {
+    /// Create a PrefixNode
     fn new(cmd :&Command) -> PrefixNode {
         PrefixNode {
             // append a space to the cmd name
@@ -348,6 +423,8 @@ impl PrefixNode {
             children: vec![]
         }
     }
+
+    /// Add a child node to this PrefixNode
     fn add_children(&mut self, child: PrefixNode) {
         self.children.push(child);
     }
@@ -365,6 +442,7 @@ impl PrefixCompleter {
         Self { tree: prefix_tree }
     }
 
+    /// Generate the command tree by cmd and parent
     fn generate_cmd_tree(parent: &mut PrefixNode, cmd: &Command) {
         let mut node = PrefixNode::new(cmd);
 
@@ -385,6 +463,7 @@ impl PrefixCompleter {
         Ok((pos, v))
     }
 
+    /// Get all commands that match the line and pos
     pub fn _complete_cmd(node: &PrefixNode, line: &str, pos: usize) -> Vec<String> {
         debug!("cli to complete {} for node {}", line, node.name);
         let line = line[..pos].trim_start();
@@ -435,6 +514,7 @@ impl PrefixCompleter {
         return new_line;
     }
 
+    /// Print the command tree
     fn print_tree(&self, prefix: &str) {
         let s:Vec<u8> = vec![];
         let mut writer = BufWriter::new(s);
@@ -442,6 +522,7 @@ impl PrefixCompleter {
         println!("{}", String::from_utf8_lossy(writer.buffer()));
     }
 
+    /// Build the command tree recursively
     fn _print_tree(node: &PrefixNode, prefix: &str, level:u32, buf: &mut BufWriter<Vec<u8>>) -> std::io::Result<()> {
         let mut level = level;
         if node.name.len() > 0 {
@@ -465,12 +546,13 @@ impl PrefixCompleter {
 impl Completer for PrefixCompleter {
     type Candidate = String;
 
+    /// Complete command
     fn complete(&self, line: &str, pos: usize, _ctx: &rustyline::Context<'_>) -> rustyline::Result<(usize, Vec<String>)> {
         self.complete_cmd(line, pos)
     }
 }
 
-
+/// Action of help command
 fn cli_help(app: &App, args: &Vec<&str>) -> CmdExeCode {
     if args.is_empty() {
         app.tree.show_subcommand_help();
@@ -484,6 +566,7 @@ fn cli_help(app: &App, args: &Vec<&str>) -> CmdExeCode {
     CmdExeCode::Ok
 }
 
+/// Action of log command
 fn cli_log(_app: &App, args: &Vec<&str>) -> CmdExeCode {
     match args.len() {
         0 => {
@@ -502,6 +585,7 @@ fn cli_log(_app: &App, args: &Vec<&str>) -> CmdExeCode {
     CmdExeCode::Ok
 }
 
+/// Action of mode command
 fn cli_mode(app: &App, args: &Vec<&str>) -> CmdExeCode {
     match args.len() {
         0 => {
