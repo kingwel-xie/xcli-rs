@@ -18,14 +18,15 @@
 //! use xcli::*;
 //! 
 //! fn main() {
-//!     let mut app = App::new("xCLI")
+//!     let mut app = App::new("xCLI", 0)
 //!         .version("v0.1")
 //!         .author("kingwel.xie@139.com");
 //! 
 //!     app.add_subcommand(Command::new("qwert")
 //!         .about("controls testing features")
 //!         .usage("qwert")
-//!         .action(|_app, _| -> CmdExeCode {
+//!         .action(|app, _| -> CmdExeCode {
+//!             let _user = app.get_userdata();
 //!             println!("qwert tested");
 //!             CmdExeCode::Ok
 //!         }));
@@ -59,11 +60,12 @@ use rustyline::completion::Completer;
 use rustyline_derive::{Helper, Hinter, Highlighter, Validator};
 use std::io::{BufWriter, Write};
 
-/// action for CLI commands
-type CmdAction = fn(&App, &Vec<&str>) -> CmdExeCode;
+/// The action for CLI commands. Note it is a fn pointer instead of Fn(),
+/// This avoids an allocation of Box::new.
+type CmdAction<T> = fn(&App<T>, &Vec<&str>) -> CmdExeCode;
 
 
-/// return code of Command action
+/// The return code of Command action.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CmdExeCode {
     /// cmd execution ok
@@ -77,38 +79,38 @@ pub enum CmdExeCode {
 }
 
 /// Xcli object
-pub struct App<'a> {
+pub struct App<'a, T> {
     pub(crate) name: String,
     pub(crate) version: Option<&'a str>,
     pub(crate) author: Option<&'a str>,
-    pub(crate) tree: Command<'a>,
+    pub(crate) tree: Command<'a, T>,
     pub(crate) rl: Rc<RefCell<Editor<PrefixCompleter>>>,
+    pub(crate) user: T,
 }
 
-/// Command struct
-#[derive(Default, Clone)]
-pub struct Command<'a> {
+/// Command structure, which describes a command and its action.
+#[derive(Default)]
+pub struct Command<'a, T> {
     pub(crate) name: String,
     pub(crate) about: Option<&'a str>,
-    pub(crate) aliases: Option<Vec<(&'a str, bool)>>, // (name, visible)
-    pub(crate) usage_str: Option<&'a str>,
+    //pub(crate) aliases: Option<Vec<(&'a str, bool)>>, // (name, visible)
+    //pub(crate) usage_str: Option<&'a str>,
     pub(crate) usage: Option<&'a str>,
-    pub(crate) help_str: Option<&'a str>,
-    //pub(crate) args: MKeyMap<'a>,
-    pub(crate) subcommands: Vec<Command<'a>>,
-    pub(crate) action: Option<CmdAction>,
+    //pub(crate) help_str: Option<&'a str>,
+    pub(crate) subcommands: Vec<Command<'a, T>>,
+    pub(crate) action: Option<CmdAction<T>>,
 }
 
-impl<'a> App<'a> {
+impl<'a, T: 'static> App<'a, T> {
     /// Create a new cli instance and return it
-    pub fn new<S: Into<String>>(n: S) -> Self {
+    pub fn new<S: Into<String>>(n: S, user: T) -> Self {
         // note we set the name of roor command to "", len = 0
         let builtin_cmds =  Command::new("")
             .about("Interactive CLI")
             .subcommand(Command::new("tree")
                 .about("prints the whole command tree")
                 .usage("tree")
-                .action(|app, _| -> CmdExeCode {
+                .action(|app: &App<T>, _| -> CmdExeCode {
                     app.show_tree();
                     CmdExeCode::Ok
                 })
@@ -163,6 +165,7 @@ impl<'a> App<'a> {
             author: None,
             tree: builtin_cmds,
             rl: rl,
+            user: user
         }
     }
 
@@ -193,26 +196,27 @@ impl<'a> App<'a> {
         self
     }
     /// append a sub tree of commands
-    pub fn add_subcommand(&mut self, subcmd: Command<'a>) {
+    pub fn add_subcommand(&mut self, subcmd: Command<'a, T>) {
         self.tree.subcommands.push(subcmd);
     }
 
     /// Show all commands and their subcommands like a tree
     pub fn show_tree(&self) {
         self.rl.borrow().helper().unwrap().print_tree("");
-        // self.command.for_each("", &mut|c, path| {
-        //     println!("{} - {}", path, c.name)
-        // });
+    }
+
+    /// Get the userdata of CLI app.
+    pub fn get_userdata(&self) -> &T {
+        &self.user
     }
 
     /// Get the status return by args command
-    fn _run(&self, args: Vec<&str>) -> CmdExeCode {
+    fn _run(&mut self, args: Vec<&str>) -> CmdExeCode {
         self.tree.run_sub(&self, &args)
     }
 
-
     /// Run the instance
-    pub fn run(self) {
+    pub fn run(mut self) {
         info!("starting CLI loop...");
 
         self.rl.borrow_mut().set_completion_type(CompletionType::List);
@@ -257,12 +261,15 @@ impl<'a> App<'a> {
     }
 }
 
-impl<'a> Command<'a> {
+impl<'a, T> Command<'a, T> {
     /// Create a command
     pub fn new<S: Into<String>>(n: S) -> Self {
         Command {
             name: n.into(),
-            ..Default::default()
+            about: None,
+            usage: None,
+            subcommands: vec![],
+            action: None
         }
     }
 
@@ -272,7 +279,8 @@ impl<'a> Command<'a> {
     }
 
     /// Set a CmdAction to this command
-    pub fn action(mut self, action: CmdAction) -> Self {
+    pub fn action(mut self, action: CmdAction<T>) -> Self {
+        //self.action = Some(Box::new(action));
         self.action = Some(action);
         self
     }
@@ -290,12 +298,12 @@ impl<'a> Command<'a> {
     }
 
     /// Get all subcommands of this command
-    pub fn get_subcommands(&self) -> &[Command<'a>] {
+    pub fn get_subcommands(&self) -> &[Command<'a, T>] {
         &self.subcommands
     }
 
     /// Add a subcommand to this command
-    pub fn subcommand(mut self, subcmd: Command<'a>) -> Self {
+    pub fn subcommand(mut self, subcmd: Command<'a, T>) -> Self {
         self.subcommands.push(subcmd);
         self
     }
@@ -303,7 +311,7 @@ impl<'a> Command<'a> {
     /// Add more than one subcommand to this command, the given subcmds implements IntoIterator
     pub fn subcommands<I>(mut self, subcmds: I) -> Self
         where
-            I: IntoIterator<Item = Command<'a>>,
+            I: IntoIterator<Item = Command<'a, T>>,
     {
         for subcmd in subcmds {
             self.subcommands.push(subcmd);
@@ -325,7 +333,7 @@ impl<'a> Command<'a> {
     }
 
     /// locate the sub command by the args given
-    pub fn locate_subcommand(&self, args: &Vec<&str>) -> Option<&Command> {
+    pub fn locate_subcommand(&self, args: &Vec<&str>) -> Option<&Command<T>> {
         if !args.is_empty()  {
             if let Some(found) = self.subcommands.iter().find(|&c| c.name.as_str() == args[0]) {
                 found.locate_subcommand(args[1..].to_vec().as_ref())
@@ -345,7 +353,7 @@ impl<'a> Command<'a> {
     ///
     /// execute sub command when action found
     ///
-    pub fn run_sub(&self, app: &App, args: &Vec<&str>) -> CmdExeCode {
+    pub fn run_sub(&self, app: &App<T>, args: &Vec<&str>) -> CmdExeCode {
         if !args.is_empty()  {
             for cmd in &self.subcommands {
                 if args[0] == cmd.name {
@@ -355,13 +363,13 @@ impl<'a> Command<'a> {
         }
 
         // hit an action
-        if let Some(action) = self.action {
+        if let Some(action) = &self.action {
             debug!("action for {}, arg={:?}", self.name, args);
-            let ret= action(app, &args);
-            match ret {
-                CmdExeCode::BadArgument(ref err) => {
-                    if err.is_some() {
-                        println!("Bad argument : '{}'", err.as_ref().unwrap());
+            let ret = action(app, &args);
+            match &ret {
+                CmdExeCode::BadArgument(err) => {
+                    if let Some(err) = err {
+                        println!("Bad argument : '{}'", err);
                     } else {
                         println!("Missing argument");
                     }
@@ -416,7 +424,7 @@ pub struct PrefixNode {
 /// Command tree node
 impl PrefixNode {
     /// Create a PrefixNode
-    fn new(cmd :&Command) -> PrefixNode {
+    fn new<T>(cmd :&Command<T>) -> PrefixNode {
         PrefixNode {
             // append a space to the cmd name
             name: cmd.name.clone().add(" "),
@@ -433,7 +441,7 @@ impl PrefixNode {
 
 impl PrefixCompleter {
     /// Constructor, take the command tree as input
-    pub fn new(cmd_tree: &Command) -> Self {
+    pub fn new<T>(cmd_tree: &Command<T>) -> Self {
         let mut prefix_tree = PrefixNode::new(cmd_tree);
         for cmd in &cmd_tree.subcommands {
             PrefixCompleter::generate_cmd_tree(&mut prefix_tree, cmd);
@@ -443,7 +451,7 @@ impl PrefixCompleter {
     }
 
     /// Generate the command tree by cmd and parent
-    fn generate_cmd_tree(parent: &mut PrefixNode, cmd: &Command) {
+    fn generate_cmd_tree<T>(parent: &mut PrefixNode, cmd: &Command<T>) {
         let mut node = PrefixNode::new(cmd);
 
         for cmd in &cmd.subcommands {
@@ -553,7 +561,7 @@ impl Completer for PrefixCompleter {
 }
 
 /// Action of help command
-fn cli_help(app: &App, args: &Vec<&str>) -> CmdExeCode {
+fn cli_help<T>(app: &App<T>, args: &Vec<&str>) -> CmdExeCode {
     if args.is_empty() {
         app.tree.show_subcommand_help();
     } else {
@@ -567,7 +575,7 @@ fn cli_help(app: &App, args: &Vec<&str>) -> CmdExeCode {
 }
 
 /// Action of log command
-fn cli_log(_app: &App, args: &Vec<&str>) -> CmdExeCode {
+fn cli_log<T>(_app: &App<T>, args: &Vec<&str>) -> CmdExeCode {
     match args.len() {
         0 => {
             println!("Global log level is: {}", log::max_level().to_string());
@@ -586,7 +594,7 @@ fn cli_log(_app: &App, args: &Vec<&str>) -> CmdExeCode {
 }
 
 /// Action of mode command
-fn cli_mode(app: &App, args: &Vec<&str>) -> CmdExeCode {
+fn cli_mode<T>(app: &App<T>, args: &Vec<&str>) -> CmdExeCode {
     match args.len() {
         0 => {
             let mode = app.rl.borrow_mut().config_mut().edit_mode();
