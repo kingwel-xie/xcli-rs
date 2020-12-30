@@ -360,7 +360,12 @@ impl<'a> Command<'a> {
         self
     }
 
-    /// show help/usage message for command
+    /// show usage message for command.
+    pub fn show_command_usage(&self) {
+        println!("Usage:       {}", self.usage.unwrap_or_else(|| self.name.as_ref()));
+    }
+
+    /// show help message for command.
     pub fn show_command_help(&self) {
         println!(
             "Command:     {}\nUsage:       {}\nDescription: {}",
@@ -424,8 +429,8 @@ impl<'a> Command<'a> {
                     println!("{}", err);
                 }
                 Err(err) => {
-                    println!("{}", err);
-                    self.show_command_help();
+                    println!("{}\n", err);
+                    self.show_command_usage();
                 }
                 Ok(_) => {}
             }
