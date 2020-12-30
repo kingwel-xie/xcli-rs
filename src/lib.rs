@@ -1,82 +1,88 @@
 //! # xcli-rs
-//! 
+//!
 //! A CLI implementation in Rust that is based on Rustyline.
-//! 
+//!
 //! **Supported Platforms**
 //! * Unix
 //! * Windows
 //! * cmd.exe
 //! * Powershell
 //! * MacOS (not tested yet)
-//! 
+//!
 //! **Note**:
 //! * " quoted argument is not supported
 //! * No prompt is shown when running on non-tty device. Need a simple tweak on Rustyline...
-//! 
+//!
 //! ## Example
 //! ```rust
 //! use xcli::*;
-//! 
-//! fn main() {
-//!     let mut app = App::new("xCLI", 0)
-//!         .version("v0.1")
-//!         .author("kingwel.xie@139.com");
-//! 
-//!     app.add_subcommand(Command::new("qwert")
-//!         .about("controls testing features")
-//!         .usage("qwert")
-//!         .action(|app, _| -> CmdExeCode {
-//!             let _user = app.get_userdata();
-//!             println!("qwert tested");
-//!             CmdExeCode::Ok
-//!         }));
-//! 
-//!     app.run();
-//! }
+//!
+//!
+//! let mut app = App::new("xCLI")
+//!     .version("v0.1")
+//!     .author("kingwel.xie@139.com");
+//!
+//! app.add_subcommand(Command::new("qwert")
+//!     .about("controls testing features")
+//!     .usage("qwert")
+//!     .action(|_app, _actions| -> XcliResult {
+//!         println!("qwert tested");
+//!         Ok(CmdExeCode::Ok)
+//!     }));
+//!
+//! app.run();
+//!
 //! ```
-//! 
+//!
 //! ## crates.io
 //! You can use this package in your project by adding the following
 //! to your `Cargo.toml`:
-//! 
+//!
 //! ```toml
 //! [dependencies]
-//! xcli = "0.1"
+//! xcli = "0.2"
 //! ```
 
-
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::fmt::Debug;
 use std::ops::Add;
+use std::rc::Rc;
 
 use log::{debug, info, LevelFilter};
 
-use rustyline::{Editor, EditMode};
-use rustyline::config::Configurer;
-use rustyline::config::CompletionType;
 use rustyline::completion::Completer;
+use rustyline::config::CompletionType;
+use rustyline::config::Configurer;
+use rustyline::{EditMode, Editor};
 
-use rustyline_derive::{Helper, Hinter, Highlighter, Validator};
-use std::io::{BufWriter, Write};
+use rustyline_derive::{Helper, Highlighter, Hinter, Validator};
 use std::collections::HashMap;
+use std::io::{BufWriter, Write};
 
-use std::fmt;
+use std::result::Result as stdResult;
 
 #[derive(thiserror::Error, Debug)]
 pub enum XcliError {
     /// bad cmd syntax, show help string
     #[error("Bad syntax")]
     BadSyntax,
+    /// Handler is inexistent
+    #[error("Bad Handler: {0} is inexistent")]
+    BadHandler(String),
     /// bad cmd arguments, can't parse, show help string
-    #[error("Bad Argument")]
+    #[error("Bad Argument: {0:?}")]
     BadArgument(Option<anyhow::Error>),
+    /// Other error
+    #[error("{0:?}")]
+    Other(anyhow::Error),
 }
+
+/// Cmd action execute result
+pub type XcliResult = stdResult<CmdExeCode, XcliError>;
 
 /// The action for CLI commands. Note it is a fn pointer instead of Fn(),
 /// This avoids an allocation of Box::new.
-pub type XcliResult = anyhow::Result<CmdExeCode>;
-type CmdAction = fn(&App, &Vec<&str>) -> XcliResult;
+type CmdAction = fn(&App, &[&str]) -> XcliResult;
 
 /// The return code of Command action.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -96,7 +102,7 @@ pub struct App<'a> {
     pub(crate) author: Option<&'a str>,
     pub(crate) tree: Command<'a>,
     pub(crate) rl: Rc<RefCell<Editor<PrefixCompleter>>>,
-    pub(crate) handlers: HashMap<String, IAny>,
+    pub(crate) handlers: HashMap<&'a str, IAny>,
 }
 
 /// Command structure, which describes a command and its action.
@@ -104,10 +110,7 @@ pub struct App<'a> {
 pub struct Command<'a> {
     pub(crate) name: String,
     pub(crate) about: Option<&'a str>,
-    //pub(crate) aliases: Option<Vec<(&'a str, bool)>>, // (name, visible)
-    //pub(crate) usage_str: Option<&'a str>,
     pub(crate) usage: Option<&'a str>,
-    //pub(crate) help_str: Option<&'a str>,
     pub(crate) subcommands: Vec<Command<'a>>,
     pub(crate) action: Option<CmdAction>,
 }
@@ -116,57 +119,65 @@ impl<'a> App<'a> {
     /// Create a new cli instance and return it
     pub fn new<S: Into<String>>(n: S) -> Self {
         // note we set the name of roor command to "", len = 0
-        let builtin_cmds =  Command::new("")
+        let builtin_cmds = Command::new("")
             .about("Interactive CLI")
-            .subcommand(Command::new("tree")
-                .about("prints the whole command tree")
-                .usage("tree")
-                .action(|app: &App, _| -> XcliResult {
-                    app.show_tree();
-                    Ok(CmdExeCode::Ok)
-                })
-            )
-            .subcommand(Command::new("mode")
-                .about("manages the line editor mode, vi/emcas")
-                .usage("mode [vi|emacs]")
-                .action(cli_mode)
-            )
-            .subcommand(Command::new("log")
-                .about("manages log level filter")
-                .usage("log [off|error|warn|info|debug|trace]")
-                .action(cli_log)
-            )
-            .subcommand(Command::new("help")
-                .about("displays help information")
-                .usage("help [command]")
-                .action(cli_help)
-            )
-            .subcommand(Command::new("test")
-                .about("controls testing features")
-                // .action(|_app, _| -> CmdExeCode {
-                //     println!("tested");
-                //     log::set_max_level(LevelFilter::Info);
-                //     CmdExeCode::Ok
-                // })
-                .subcommand(Command::new("c1")
-                    .about("controls testing features")
-                    .action(|_app, _| -> XcliResult {
-                        println!("c1 tested");
+            .subcommand(
+                Command::new("tree")
+                    .about("prints the whole command tree")
+                    .usage("tree")
+                    .action(|app: &App, _| -> XcliResult {
+                        app.show_tree();
                         Ok(CmdExeCode::Ok)
-                    }))
+                    }),
             )
-            .subcommand(Command::new("exit")
-                .about("quits CLI and exits to shell")
-                .action(|_, _| -> XcliResult {
-                    Ok(CmdExeCode::Exit)
-                }))
-            .subcommand(Command::new("version")
-                .about("shows version information")
-                .action(|app, _| -> XcliResult {
-                    println!("{}\n{}\n{}\n", app.get_name(), app.get_author(), app.get_version());
-                    Ok(CmdExeCode::Ok)
-                }))
-            ;
+            .subcommand(
+                Command::new("mode")
+                    .about("manages the line editor mode, vi/emcas")
+                    .usage("mode [vi|emacs]")
+                    .action(cli_mode),
+            )
+            .subcommand(
+                Command::new("log")
+                    .about("manages log level filter")
+                    .usage("log [off|error|warn|info|debug|trace]")
+                    .action(cli_log),
+            )
+            .subcommand(
+                Command::new("help")
+                    .about("displays help information")
+                    .usage("help [command]")
+                    .action(cli_help),
+            )
+            .subcommand(
+                Command::new("test")
+                    .about("controls testing features")
+                    .subcommand(
+                        Command::new("c1")
+                            .about("controls testing features")
+                            .action(|_app, _| -> XcliResult {
+                                println!("c1 tested");
+                                Ok(CmdExeCode::Ok)
+                            }),
+                    ),
+            )
+            .subcommand(
+                Command::new("exit")
+                    .about("quits CLI and exits to shell")
+                    .action(|_, _| -> XcliResult { Ok(CmdExeCode::Exit) }),
+            )
+            .subcommand(
+                Command::new("version")
+                    .about("shows version information")
+                    .action(|app, _| -> XcliResult {
+                        println!(
+                            "{}\n{}\n{}\n",
+                            app.get_name(),
+                            app.get_author(),
+                            app.get_version()
+                        );
+                        Ok(CmdExeCode::Ok)
+                    }),
+            );
 
         let rl = Rc::new(RefCell::new(Editor::<PrefixCompleter>::new()));
 
@@ -178,7 +189,7 @@ impl<'a> App<'a> {
             author: None,
             tree: builtin_cmds,
             rl,
-            handlers
+            handlers,
         }
     }
 
@@ -218,13 +229,16 @@ impl<'a> App<'a> {
         self.rl.borrow().helper().unwrap().print_tree("");
     }
 
-    pub fn register(&mut self, key: String, value: IAny) {
+    /// Register handler
+    pub fn register(&mut self, key: &'static str, value: IAny) {
         self.handlers.insert(key, value);
     }
 
     /// Get handler
-    pub fn get_handler(&self, key: &str) -> Option<&IAny> {
-        self.handlers.get(key)
+    pub fn get_handler(&self, key: &str) -> stdResult<&IAny, XcliError> {
+        self.handlers
+            .get(key)
+            .ok_or_else(|| XcliError::BadHandler(key.to_string()))
     }
 
     /// Get the status return by args command
@@ -236,8 +250,12 @@ impl<'a> App<'a> {
     pub fn run(mut self) {
         info!("starting CLI loop...");
 
-        self.rl.borrow_mut().set_completion_type(CompletionType::List);
-        self.rl.borrow_mut().set_helper(Some(PrefixCompleter::new(&self.tree)));
+        self.rl
+            .borrow_mut()
+            .set_completion_type(CompletionType::List);
+        self.rl
+            .borrow_mut()
+            .set_helper(Some(PrefixCompleter::new(&self.tree)));
 
         if self.rl.borrow_mut().load_history("history.txt").is_err() {
             println!("No previous history.");
@@ -250,28 +268,26 @@ impl<'a> App<'a> {
                     self.rl.borrow_mut().add_history_entry(line.as_str());
                     debug!("Line: {}", line);
                     line
-                },
+                }
                 Err(err) => {
                     println!("Error: {:?}", err);
-                    let l = self.rl.borrow_mut().readline("Do you realy want to quit? [y/N]").unwrap_or("n".parse().unwrap());
+                    let l = self
+                        .rl
+                        .borrow_mut()
+                        .readline("Do you realy want to quit? [y/N]")
+                        .unwrap_or_else(|_| "n".parse().unwrap());
                     match l.as_str() {
-                        "Y" | "y" => {
-                            break
-                        },
+                        "Y" | "y" => break,
                         _ => "".to_string(),
                     }
                 }
             };
 
-            let args :Vec<_> = line.split_ascii_whitespace().collect();
+            let args: Vec<_> = line.split_ascii_whitespace().collect();
 
             // for no any args, do nothing but to continue loop
-            if !args.is_empty() {
-                match self._run(args) {
-                    Ok(CmdExeCode::Exit) => break,  // std::process::exit(0)
-                    //CmdExeCode::BadArgument => println!("Bad argument!"),
-                    _ => {},
-                }
+            if let Ok(CmdExeCode::Exit) = self._run(args) {
+                break;
             }
         }
         self.rl.borrow_mut().save_history("history.txt").unwrap();
@@ -286,7 +302,7 @@ impl<'a> Command<'a> {
             about: None,
             usage: None,
             subcommands: vec![],
-            action: None
+            action: None,
         }
     }
 
@@ -326,8 +342,8 @@ impl<'a> Command<'a> {
 
     /// Add more than one subcommand to this command, the given subcmds implements IntoIterator
     pub fn subcommands<I>(mut self, subcmds: I) -> Self
-        where
-            I: IntoIterator<Item = Command<'a>>,
+    where
+        I: IntoIterator<Item = Command<'a>>,
     {
         for subcmd in subcmds {
             self.subcommands.push(subcmd);
@@ -337,21 +353,33 @@ impl<'a> Command<'a> {
 
     /// show help/usage message for command
     pub fn show_command_help(&self) {
-        println!("Command:     {}\nUsage:       {}\nDescription: {}", self.name,
-                 self.usage.unwrap_or(self.name.as_ref()), self.about.unwrap_or(""));
+        println!(
+            "Command:     {}\nUsage:       {}\nDescription: {}",
+            self.name,
+            self.usage.unwrap_or_else(|| self.name.as_ref()),
+            self.about.unwrap_or("")
+        );
     }
 
     /// show help message for command and its subs
     pub fn show_subcommand_help(&self) {
         for cmd in &self.subcommands {
-            println!("{:12}: {:14}", cmd.name, cmd.usage.unwrap_or(cmd.name.as_ref()))
+            println!(
+                "{:12}: {:14}",
+                cmd.name,
+                cmd.usage.unwrap_or_else(|| cmd.name.as_ref())
+            )
         }
     }
 
     /// locate the sub command by the args given
-    pub fn locate_subcommand(&self, args: &Vec<&str>) -> Option<&Command> {
-        if !args.is_empty()  {
-            if let Some(found) = self.subcommands.iter().find(|&c| c.name.as_str() == args[0]) {
+    pub fn locate_subcommand(&self, args: &[&str]) -> Option<&Command> {
+        if !args.is_empty() {
+            if let Some(found) = self
+                .subcommands
+                .iter()
+                .find(|&c| c.name.as_str() == args[0])
+            {
                 found.locate_subcommand(args[1..].to_vec().as_ref())
             } else {
                 None
@@ -369,8 +397,8 @@ impl<'a> Command<'a> {
     ///
     /// execute sub command when action found
     ///
-    pub fn run_sub(&self, app: &App, args: &Vec<&str>) -> XcliResult {
-        if !args.is_empty()  {
+    pub fn run_sub(&self, app: &App, args: &[&str]) -> XcliResult {
+        if !args.is_empty() {
             for cmd in &self.subcommands {
                 if args[0] == cmd.name {
                     return cmd.run_sub(app, args[1..].to_vec().as_ref());
@@ -381,48 +409,31 @@ impl<'a> Command<'a> {
         // hit an action
         if let Some(action) = &self.action {
             debug!("action for {}, arg={:?}", self.name, args);
-            let ret :XcliResult = action(app, &args);
-            if let Err(err) = &ret {
-                match err.downcast_ref::<XcliError>() {
-                    Some(XcliError::BadArgument(e)) => {
-                        if let Some(e) = e {
-                            println!("Bad argument : '{}'", e);
-                        } else {
-                            println!("Missing argument");
-                        }
-                    },
-                    Some(XcliError::BadSyntax) => {
-                        println!("Bad syntax : {:?}", args);
-                        self.show_command_help();
-                    },
-                    None => {}
+            let ret = action(app, &args);
+            match &ret {
+                Err(XcliError::BadArgument(err)) => {
+                    if let Some(err) = err {
+                        println!("Bad argument : '{}'", err);
+                    } else {
+                        println!("Missing argument");
+                    }
+                    self.show_command_help();
                 }
-
-                if let None = err.downcast_ref::<XcliError>() {
-                    println!("Failed : {:?}", err);
+                Err(XcliError::BadSyntax) => {
+                    println!("Bad syntax : {:?}", args);
+                    self.show_command_help();
                 }
+                Err(XcliError::Other(err)) => {
+                    println!("{}", err);
+                }
+                _ => {}
             }
-            // match &ret {
-            //      Err(XcliError::BadArgument(err)) => {
-            //         if let Some(err) = err {
-            //             println!("Bad argument : '{}'", err);
-            //         } else {
-            //             println!("Missing argument");
-            //         }
-            //         self.show_command_help();
-            //     },
-            //     Err(XcliError::BadSyntax) => {
-            //         println!("Bad syntax : {:?}", args);
-            //         self.show_command_help();
-            //     }
-            //     _ => {}
-            // }
 
             return ret;
         } else {
             // no action defined, print error message if there are some unrecognized args
             // otherwise, show help message for this command
-            if args.len() > 0 {
+            if !args.is_empty() {
                 debug!("command without action, but with some args {:?}", args);
                 println!("Unknown command or arguments : {:?}", args)
             } else {
@@ -436,7 +447,10 @@ impl<'a> Command<'a> {
     }
 
     ///
-    pub fn for_each<F>(&self, path: &str, f: &mut F) where F: FnMut(&Self, &str) {
+    pub fn for_each<F>(&self, path: &str, f: &mut F)
+    where
+        F: FnMut(&Self, &str),
+    {
         f(&self, path);
         for a in self.get_subcommands() {
             a.for_each(format!("{}/{}", path, a.name).as_str(), f);
@@ -444,27 +458,26 @@ impl<'a> Command<'a> {
     }
 }
 
-
 /// A `PrefixCompleter` for subcommands
 #[derive(Helper, Hinter, Validator, Highlighter)]
 pub struct PrefixCompleter {
-    tree: PrefixNode
+    tree: PrefixNode,
 }
 
 #[derive(Debug, Clone)]
 pub struct PrefixNode {
-    name:     String,
+    name: String,
     children: Vec<PrefixNode>,
 }
 
 /// Command tree node
 impl PrefixNode {
     /// Create a PrefixNode
-    fn new(cmd :&Command) -> PrefixNode {
+    fn new(cmd: &Command) -> PrefixNode {
         PrefixNode {
             // append a space to the cmd name
             name: cmd.name.clone().add(" "),
-            children: vec![]
+            children: vec![],
         }
     }
 
@@ -473,7 +486,6 @@ impl PrefixNode {
         self.children.push(child);
     }
 }
-
 
 impl PrefixCompleter {
     /// Constructor, take the command tree as input
@@ -513,7 +525,7 @@ impl PrefixCompleter {
         let line = line[..pos].trim_start();
         let mut go_next = false;
 
-        let mut new_line:Vec<String> = vec![];
+        let mut new_line: Vec<String> = vec![];
         let mut offset: usize = 0;
         let mut next_node = None;
 
@@ -534,12 +546,10 @@ impl PrefixCompleter {
                     // may go next level
                     go_next = true;
                 }
-            } else {
-                if child.name.starts_with(line) {
-                    new_line.push(child.name[line.len()..].to_string());
-                    offset = line.len();
-                    next_node = Some(child);
-                }
+            } else if child.name.starts_with(line) {
+                new_line.push(child.name[line.len()..].to_string());
+                offset = line.len();
+                next_node = Some(child);
             }
         }
 
@@ -555,24 +565,29 @@ impl PrefixCompleter {
         }
 
         debug!("offset={}, nl={:?}", offset, new_line);
-        return new_line;
+        new_line
     }
 
     /// Print the command tree
     fn print_tree(&self, prefix: &str) {
-        let s:Vec<u8> = vec![];
+        let s: Vec<u8> = vec![];
         let mut writer = BufWriter::new(s);
         let _ = PrefixCompleter::_print_tree(&self.tree, prefix, 0, &mut writer);
         println!("{}", String::from_utf8_lossy(writer.buffer()));
     }
 
     /// Build the command tree recursively
-    fn _print_tree(node: &PrefixNode, prefix: &str, level:u32, buf: &mut BufWriter<Vec<u8>>) -> std::io::Result<()> {
+    fn _print_tree(
+        node: &PrefixNode,
+        prefix: &str,
+        level: u32,
+        buf: &mut BufWriter<Vec<u8>>,
+    ) -> std::io::Result<()> {
         let mut level = level;
-        if node.name.len() > 0 {
+        if !node.name.is_empty() {
             write!(buf, "{}", prefix)?;
             if level > 0 {
-                write!(buf, "{}{} ", "├", "─".repeat((level as usize *4)-2))?;
+                write!(buf, "├{}", "─".repeat((level as usize * 4) - 2))?;
             }
             writeln!(buf, "{}", node.name)?;
             level += 1;
@@ -584,71 +599,73 @@ impl PrefixCompleter {
 
         Ok(())
     }
-
 }
 
 impl Completer for PrefixCompleter {
     type Candidate = String;
 
     /// Complete command
-    fn complete(&self, line: &str, pos: usize, _ctx: &rustyline::Context<'_>) -> rustyline::Result<(usize, Vec<String>)> {
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<String>)> {
         self.complete_cmd(line, pos)
     }
 }
 
 /// Action of help command
-fn cli_help(app: &App, args: &Vec<&str>) -> XcliResult {
+fn cli_help(app: &App, args: &[&str]) -> XcliResult {
     if args.is_empty() {
         app.tree.show_subcommand_help();
+    } else if let Some(cmd) = app.tree.locate_subcommand(args) {
+        cmd.show_command_help();
     } else {
-        if let Some(cmd) = app.tree.locate_subcommand(args) {
-            cmd.show_command_help();
-        } else {
-            println!("Unrecognized command {:?}", args)
-        }
+        println!("Unrecognized command {:?}", args)
     }
     Ok(CmdExeCode::Ok)
 }
 
 /// Action of log command
-fn cli_log(_app: &App, args: &Vec<&str>) -> XcliResult {
+fn cli_log(_app: &App, args: &[&str]) -> XcliResult {
     match args.len() {
         0 => {
             println!("Global log level is: {}", log::max_level().to_string());
-        },
-        1 => {
-            match args[0].parse::<LevelFilter>() {
-                Ok(level) => log::set_max_level(level),
-                Err(err) => {
-                    let err =  format!("{}, {}", args[0], err);
-                    return Err(XcliError::BadArgument(Some(anyhow::Error::msg(err))).into())
-                }
+        }
+        1 => match args[0].parse::<LevelFilter>() {
+            Ok(level) => log::set_max_level(level),
+            Err(err) => {
+                let err = format!("{}, {}", args[0], err);
+                return Err(XcliError::BadArgument(Some(anyhow::Error::msg(err))));
             }
         },
-        _ => return Err(XcliError::BadSyntax.into()),
+        _ => return Err(XcliError::BadSyntax),
     }
 
     Ok(CmdExeCode::Ok)
 }
 
 /// Action of mode command
-fn cli_mode(app: &App, args: &Vec<&str>) -> XcliResult {
+fn cli_mode(app: &App, args: &[&str]) -> XcliResult {
     match args.len() {
         0 => {
             let mode = app.rl.borrow_mut().config_mut().edit_mode();
-            let mode_str = if mode == EditMode::Vi { "Vi"} else { "Emacs" };
+            let mode_str = if mode == EditMode::Vi { "Vi" } else { "Emacs" };
             println!("Current edit mode is: {}", mode_str);
-        },
-        1 => {
-            match args[0].to_lowercase().as_ref() {
-                "vi" => app.rl.borrow_mut().set_edit_mode(EditMode::Vi),
-                "emacs" => app.rl.borrow_mut().set_edit_mode(EditMode::Emacs),
-                bad => return {
-                    Err(XcliError::BadArgument(Some(anyhow::Error::msg(bad.to_string()))).into())
-                },
+        }
+        1 => match args[0].to_lowercase().as_ref() {
+            "vi" => app.rl.borrow_mut().set_edit_mode(EditMode::Vi),
+            "emacs" => app.rl.borrow_mut().set_edit_mode(EditMode::Emacs),
+            bad => {
+                return {
+                    Err(XcliError::BadArgument(Some(anyhow::Error::msg(
+                        bad.to_string(),
+                    ))))
+                }
             }
         },
-        _ => return Err(XcliError::BadSyntax.into()),
+        _ => return Err(XcliError::BadSyntax),
     }
 
     Ok(CmdExeCode::Ok)
