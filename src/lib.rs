@@ -63,16 +63,16 @@ use std::result::Result as stdResult;
 
 #[derive(thiserror::Error, Debug)]
 pub enum XcliError {
-    /// bad cmd syntax, show help string
+    /// Bad command syntax.
     #[error("Bad syntax")]
     BadSyntax,
-    /// Handler is inexistent
-    #[error("Bad Handler: {0} is inexistent")]
-    BadHandler(String),
-    /// bad cmd arguments, can't parse, show help string
+    /// The specified handler does not exist.
+    #[error("Missing Handler: {0} not found")]
+    MissingHandler(String),
+    /// Bad command arguments, unable to parse.
     #[error("Bad Argument: {0:?}")]
     BadArgument(Option<anyhow::Error>),
-    /// Other error
+    /// Other error.
     #[error("{0:?}")]
     Other(anyhow::Error),
 }
@@ -85,7 +85,7 @@ pub type XcliResult = stdResult<CmdExeCode, XcliError>;
 type CmdAction = fn(&App, &[&str]) -> XcliResult;
 
 /// The return code of Command action.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CmdExeCode {
     /// cmd execution ok
     Ok,
@@ -238,7 +238,7 @@ impl<'a> App<'a> {
     pub fn get_handler(&self, key: &str) -> stdResult<&IAny, XcliError> {
         self.handlers
             .get(key)
-            .ok_or_else(|| XcliError::BadHandler(key.to_string()))
+            .ok_or_else(|| XcliError::MissingHandler(key.to_string()))
     }
 
     /// Get the status return by args command
@@ -285,9 +285,12 @@ impl<'a> App<'a> {
 
             let args: Vec<_> = line.split_ascii_whitespace().collect();
 
-            // for no any args, do nothing but to continue loop
-            if let Ok(CmdExeCode::Exit) = self._run(args) {
-                break;
+            // skip empty input line
+            if !args.is_empty() {
+                // for no any args, do nothing but to continue loop
+                if let Ok(CmdExeCode::Exit) = self._run(args) {
+                    break;
+                }
             }
         }
         self.rl.borrow_mut().save_history("history.txt").unwrap();

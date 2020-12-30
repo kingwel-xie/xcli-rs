@@ -1,6 +1,6 @@
 [package]
 name = "xcli"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Kingwel Xie <kingwel.xie@139.com>"]
 edition = "2018"
 description = "xcli, a CLI implementation based on rustyline"
