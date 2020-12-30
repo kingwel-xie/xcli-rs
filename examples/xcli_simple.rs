@@ -12,10 +12,10 @@ fn main() {
 
     app.add_subcommand(Command::new("qwert")
         .about("controls testing features")
-        .action(|_app, _| -> CmdExeCode {
+        .action(|_app, _| -> XcliResult {
             println!("tested");
             log::set_max_level(LevelFilter::Info);
-            CmdExeCode::Ok
+            Ok(CmdExeCode::Ok)
         }));
 
     app.run();
