@@ -1,6 +1,6 @@
 [package]
 name = "xcli"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Kingwel Xie <kingwel.xie@139.com>"]
 edition = "2018"
 description = "xcli, a CLI implementation based on rustyline"
@@ -15,7 +15,6 @@ repository = "https://github.com/kingwel-xie/xcli-rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.37"
 thiserror = "1.0.23"
 rustyline = "6.2"
 rustyline-derive = "0.3.1"

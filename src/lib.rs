@@ -67,14 +67,20 @@ pub enum XcliError {
     #[error("Bad syntax")]
     BadSyntax,
     /// The specified handler does not exist.
-    #[error("Missing Handler: {0} not found")]
+    #[error("Missing handler: {0} not found")]
     MissingHandler(String),
-    /// Bad command arguments, unable to parse.
-    #[error("Bad Argument: {0:?}")]
-    BadArgument(Option<anyhow::Error>),
+    /// Missing required argument(s).
+    #[error("Missing required argument")]
+    MissingArgument,
+    /// Bad argument.
+    #[error("Bad argument: {0:?}")]
+    BadArgument(String),
+    /// Mismatched arguments.
+    #[error("Mismatched argument(s): {0:?}")]
+    MismatchArgument(Vec<String>),
     /// Other error.
     #[error("{0:?}")]
-    Other(anyhow::Error),
+    Other(String),
 }
 
 /// Cmd action execute result
@@ -283,7 +289,7 @@ impl<'a> App<'a> {
                 }
             };
 
-            let args: Vec<_> = line.split_ascii_whitespace().collect();
+            let args = line.split_ascii_whitespace().collect::<Vec<_>>();
 
             // skip empty input line
             if !args.is_empty() {
@@ -414,22 +420,14 @@ impl<'a> Command<'a> {
             debug!("action for {}, arg={:?}", self.name, args);
             let ret = action(app, &args);
             match &ret {
-                Err(XcliError::BadArgument(err)) => {
-                    if let Some(err) = err {
-                        println!("Bad argument : '{}'", err);
-                    } else {
-                        println!("Missing argument");
-                    }
-                    self.show_command_help();
-                }
-                Err(XcliError::BadSyntax) => {
-                    println!("Bad syntax : {:?}", args);
-                    self.show_command_help();
-                }
                 Err(XcliError::Other(err)) => {
                     println!("{}", err);
                 }
-                _ => {}
+                Err(err) => {
+                    println!("{}", err);
+                    self.show_command_help();
+                }
+                Ok(_) => {}
             }
 
             return ret;
@@ -640,7 +638,7 @@ fn cli_log(_app: &App, args: &[&str]) -> XcliResult {
             Ok(level) => log::set_max_level(level),
             Err(err) => {
                 let err = format!("{}, {}", args[0], err);
-                return Err(XcliError::BadArgument(Some(anyhow::Error::msg(err))));
+                return Err(XcliError::BadArgument(err));
             }
         },
         _ => return Err(XcliError::BadSyntax),
@@ -662,9 +660,7 @@ fn cli_mode(app: &App, args: &[&str]) -> XcliResult {
             "emacs" => app.rl.borrow_mut().set_edit_mode(EditMode::Emacs),
             bad => {
                 return {
-                    Err(XcliError::BadArgument(Some(anyhow::Error::msg(
-                        bad.to_string(),
-                    ))))
+                    Err(XcliError::BadArgument(bad.into()))
                 }
             }
         },
