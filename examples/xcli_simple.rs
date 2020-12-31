@@ -24,8 +24,7 @@ fn main() {
         Command::new("mismatch")
             .about("controls testing features")
             .action(|_app, args| -> XcliResult {
-                let a = args.iter().map(|&a|a.to_string()).collect();
-                Err(XcliError::MismatchArgument(a))
+                Err(XcliError::MismatchArgument(10, args.len()))
             }),
     );
 

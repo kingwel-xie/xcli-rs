@@ -73,13 +73,13 @@ pub enum XcliError {
     #[error("Missing required argument")]
     MissingArgument,
     /// Bad argument.
-    #[error("Bad argument: {0:?}")]
+    #[error("Bad argument: {0}")]
     BadArgument(String),
     /// Mismatched arguments.
-    #[error("Mismatched argument(s): {0:?}")]
-    MismatchArgument(Vec<String>),
+    #[error("Mismatched argument(s): wanted: {0}, actual: {1}")]
+    MismatchArgument(usize, usize),
     /// Other error.
-    #[error("{0:?}")]
+    #[error("{0}")]
     Other(String),
 }
 

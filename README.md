@@ -14,24 +14,22 @@ A CLI implementation in Rust that is based on Rustyline.
 * No prompt is shown when running on non-tty device. Need a simple tweak on Rustyline...
 
 ## Example
-```rust
+```no_run
 use xcli::*;
 
-fn main() {
-    let mut app = App::new("xCLI")
-        .version("v0.1")
-        .author("kingwel.xie@139.com");
+let mut app = App::new("xCLI")
+    .version("v0.1")
+    .author("kingwel.xie@139.com");
 
-    app.add_subcommand(Command::new("qwert")
-        .about("controls testing features")
-        .usage("qwert")
-        .action(|_app, _| -> CmdExeCode {
-            println!("qwert tested");
-            CmdExeCode::Ok
-        }));
+app.add_subcommand(Command::new("qwert")
+    .about("controls testing features")
+    .usage("qwert")
+    .action(|_app, _actions| -> XcliResult {
+        println!("qwert tested");
+        Ok(CmdExeCode::Ok)
+    }));
 
-    app.run();
-}
+app.run();
 ```
 
 ## crates.io
@@ -40,5 +38,9 @@ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-xcli = "0.1"
+xcli = "0.4"
 ```
+
+## ChangeLog
+
+- 2020.12.31, v0.4.2 API changes. Allow a user data to be registered into xCli APP, and it can be retrieved later by user specified CLI commands. Refactor xCliError to take more error type. 
