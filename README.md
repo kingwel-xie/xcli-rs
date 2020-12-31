@@ -43,4 +43,8 @@ xcli = "0.4"
 
 ## ChangeLog
 
-- 2020.12.31, v0.4.2 API changes. Allow a user data to be registered into xCli APP, and it can be retrieved later by user specified CLI commands. Refactor xCliError to take more error type. 
+- 2020.12.31, v0.5.0 API changes. 
+    + Allow a user data to be registered into xCli APP, and it can be retrieved later by user specified CLI commands.
+    + Refactor xCliError to take more error type. 
+    + add_subcommand_with_userdata() for attaching userdata to CLI sub commands
+    + example updated to reflect the new APIs 

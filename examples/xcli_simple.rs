@@ -44,5 +44,19 @@ fn main() {
             }),
     );
 
+    app.add_subcommand_with_userdata(
+        Command::new("userdata")
+            .about("controls testing features")
+            .action(|app, _args| -> XcliResult {
+                let data_any = app.get_handler("userdata").unwrap();
+
+                let data = data_any.downcast_ref::<usize>().expect("usize");
+
+                println!("userdata = {}", data);
+                Ok(CmdExeCode::Ok)
+            }),
+        Box::new(100usize)
+    );
+
     app.run();
 }

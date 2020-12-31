@@ -108,7 +108,7 @@ pub struct App<'a> {
     pub(crate) author: Option<&'a str>,
     pub(crate) tree: Command<'a>,
     pub(crate) rl: Rc<RefCell<Editor<PrefixCompleter>>>,
-    pub(crate) handlers: HashMap<&'a str, IAny>,
+    pub(crate) handlers: HashMap<String, IAny>,
 }
 
 /// Command structure, which describes a command and its action.
@@ -187,15 +187,13 @@ impl<'a> App<'a> {
 
         let rl = Rc::new(RefCell::new(Editor::<PrefixCompleter>::new()));
 
-        let handlers = HashMap::default();
-
         App {
             name: n.into(),
             version: None,
             author: None,
             tree: builtin_cmds,
             rl,
-            handlers,
+            handlers: HashMap::default(),
         }
     }
 
@@ -220,13 +218,22 @@ impl<'a> App<'a> {
         self
     }
 
-    /// Get the version of this instance
+    /// Get the version of this instance.
     pub fn version<S: Into<&'a str>>(mut self, ver: S) -> Self {
         self.version = Some(ver.into());
         self
     }
-    /// append a sub tree of commands
+    /// Add sub commands to command tree.
     pub fn add_subcommand(&mut self, subcmd: Command<'a>) {
+        self.tree.subcommands.push(subcmd);
+    }
+
+    /// Add sub commands to commands, with user defined data.
+    ///
+    /// userdata must be an IAny trait object, which will be associated with the
+    /// command name of the subcmd.
+    pub fn add_subcommand_with_userdata(&mut self, subcmd: Command<'a>, value: IAny) {
+        self.handlers.insert(subcmd.name.clone(), value);
         self.tree.subcommands.push(subcmd);
     }
 
@@ -235,16 +242,12 @@ impl<'a> App<'a> {
         self.rl.borrow().helper().unwrap().print_tree("");
     }
 
-    /// Register handler
-    pub fn register(&mut self, key: &'static str, value: IAny) {
-        self.handlers.insert(key, value);
-    }
-
     /// Get handler
-    pub fn get_handler(&self, key: &str) -> stdResult<&IAny, XcliError> {
+    pub fn get_handler<S: Into<String>>(&self, key: S) -> stdResult<&IAny, XcliError> {
+        let ks = key.into();
         self.handlers
-            .get(key)
-            .ok_or_else(|| XcliError::MissingHandler(key.to_string()))
+            .get(&ks)
+            .ok_or_else(|| XcliError::MissingHandler(ks))
     }
 
     /// Get the status return by args command
