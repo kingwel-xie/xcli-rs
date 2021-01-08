@@ -40,7 +40,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! xcli = "0.2"
+//! xcli = "0.5"
 //! ```
 
 use std::cell::RefCell;

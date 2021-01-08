@@ -38,7 +38,7 @@ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-xcli = "0.4"
+xcli = "0.5"
 ```
 
 ## ChangeLog
