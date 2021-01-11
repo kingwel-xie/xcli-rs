@@ -11,7 +11,7 @@ fn main() {
         .author("kingwel.xie@139.com");
 
     app.add_subcommand(
-        Command::new("test1")
+        Command::new_with_alias("test1", "t1")
             .about("controls testing features")
             .action(|_app, _| -> XcliResult {
                 println!("tested");
@@ -21,7 +21,7 @@ fn main() {
     );
 
     app.add_subcommand(
-        Command::new("mismatch")
+        Command::new_with_alias("mismatch", "mm")
             .about("controls testing features")
             .action(|_app, args| -> XcliResult {
                 Err(XcliError::MismatchArgument(10, args.len()))
@@ -29,7 +29,7 @@ fn main() {
     );
 
     app.add_subcommand(
-        Command::new("bad")
+        Command::new_with_alias("bad", "b")
             .about("controls testing features")
             .action(|_app, _args| -> XcliResult {
                 Err(XcliError::BadArgument("bad".into()))
@@ -37,7 +37,7 @@ fn main() {
     );
 
     app.add_subcommand(
-        Command::new("missing")
+        Command::new_with_alias("missing", "mm")
             .about("controls testing features")
             .action(|_app, _args| -> XcliResult {
                 Err(XcliError::MissingArgument)
@@ -45,7 +45,7 @@ fn main() {
     );
 
     app.add_subcommand_with_userdata(
-        Command::new("userdata")
+        Command::new_with_alias("userdata", "ud")
             .about("controls testing features")
             .action(|app, _args| -> XcliResult {
                 let data_any = app.get_handler("userdata").unwrap();

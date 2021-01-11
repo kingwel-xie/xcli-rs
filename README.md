@@ -38,13 +38,25 @@ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-xcli = "0.5"
+xcli = "0.5.1"
 ```
 
 ## ChangeLog
 
 - 2020.12.31, v0.5.0 API changes. 
-    + Allow a user data to be registered into xCli APP, and it can be retrieved later by user specified CLI commands.
-    + Refactor xCliError to take more error type. 
+    + Allow a user data to be registered into xCli APP, and it can be retrieved later by user specified CLI commands
+    + Refactor xCliError to take more error types. 
     + add_subcommand_with_userdata() for attaching userdata to CLI sub commands
     + example updated to reflect the new APIs 
+
+- 2021.1.11, v0.5.1
+    + Command alias: command can have a short name
+        ```no_run
+        tree            : tree
+        mode            : mode [vi|emacs]
+        log, l          : log [off|error|warn|info|debug|trace]
+        help, h         : help [command]
+        exit            : exit
+        version, v      : version
+        ```
+      

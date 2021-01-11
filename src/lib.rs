@@ -115,6 +115,7 @@ pub struct App<'a> {
 #[derive(Default)]
 pub struct Command<'a> {
     pub(crate) name: String,
+    pub(crate) alias: Option<String>,
     pub(crate) about: Option<&'a str>,
     pub(crate) usage: Option<&'a str>,
     pub(crate) subcommands: Vec<Command<'a>>,
@@ -143,28 +144,16 @@ impl<'a> App<'a> {
                     .action(cli_mode),
             )
             .subcommand(
-                Command::new("log")
+                Command::new_with_alias("log", "l")
                     .about("manages log level filter")
                     .usage("log [off|error|warn|info|debug|trace]")
                     .action(cli_log),
             )
             .subcommand(
-                Command::new("help")
+                Command::new_with_alias("help", "h")
                     .about("displays help information")
                     .usage("help [command]")
                     .action(cli_help),
-            )
-            .subcommand(
-                Command::new("test")
-                    .about("controls testing features")
-                    .subcommand(
-                        Command::new("c1")
-                            .about("controls testing features")
-                            .action(|_app, _| -> XcliResult {
-                                println!("c1 tested");
-                                Ok(CmdExeCode::Ok)
-                            }),
-                    ),
             )
             .subcommand(
                 Command::new("exit")
@@ -172,7 +161,7 @@ impl<'a> App<'a> {
                     .action(|_, _| -> XcliResult { Ok(CmdExeCode::Exit) }),
             )
             .subcommand(
-                Command::new("version")
+                Command::new_with_alias("version", "v")
                     .about("shows version information")
                     .action(|app, _| -> XcliResult {
                         println!(
@@ -247,7 +236,7 @@ impl<'a> App<'a> {
         let ks = key.into();
         self.handlers
             .get(&ks)
-            .ok_or_else(|| XcliError::MissingHandler(ks))
+            .ok_or(XcliError::MissingHandler(ks))
     }
 
     /// Get the status return by args command
@@ -311,6 +300,7 @@ impl<'a> Command<'a> {
     pub fn new<S: Into<String>>(n: S) -> Self {
         Command {
             name: n.into(),
+            alias: None,
             about: None,
             usage: None,
             subcommands: vec![],
@@ -318,24 +308,49 @@ impl<'a> Command<'a> {
         }
     }
 
-    /// Get the name of this command
+    pub fn new_with_alias<S: Into<String>>(n: S, s: S) -> Self {
+        Command {
+            name: n.into(),
+            alias: Some(s.into()),
+            about: None,
+            usage: None,
+            subcommands: vec![],
+            action: None,
+        }
+    }
+
+    /// Get the name of this command.
     pub fn get_name(&self) -> &str {
         &self.name
     }
 
-    /// Set a CmdAction to this command
+    /// Get the alias name of this command.
+    pub fn get_alias(&self) -> &Option<String> {
+        &self.alias
+    }
+
+    // Get the name description, aka. name+alias of this command.
+    fn get_description(&self) -> String {
+        let mut s = self.name.clone();
+        if let Some(alias) = self.alias.as_ref() {
+            s = format!("{}, {} ", s, alias);
+        }
+        s
+    }
+
+    /// Set a CmdAction to this command.
     pub fn action(mut self, action: CmdAction) -> Self {
         self.action = Some(action);
         self
     }
 
-    /// Set a description to this command
+    /// Set a description to this command.
     pub fn about<S: Into<&'a str>>(mut self, about: S) -> Self {
         self.about = Some(about.into());
         self
     }
 
-    /// Set the usage to this command
+    /// Set the usage to this command.
     pub fn usage<S: Into<&'a str>>(mut self, about: S) -> Self {
         self.usage = Some(about.into());
         self
@@ -372,7 +387,7 @@ impl<'a> Command<'a> {
     pub fn show_command_help(&self) {
         println!(
             "Command:     {}\nUsage:       {}\nDescription: {}",
-            self.name,
+            self.get_description(),
             self.usage.unwrap_or_else(|| self.name.as_ref()),
             self.about.unwrap_or("")
         );
@@ -382,8 +397,8 @@ impl<'a> Command<'a> {
     pub fn show_subcommand_help(&self) {
         for cmd in &self.subcommands {
             println!(
-                "{:12}: {:14}",
-                cmd.name,
+                "{:16}: {}",
+                cmd.get_description(),
                 cmd.usage.unwrap_or_else(|| cmd.name.as_ref())
             )
         }
@@ -395,7 +410,7 @@ impl<'a> Command<'a> {
             if let Some(found) = self
                 .subcommands
                 .iter()
-                .find(|&c| c.name.as_str() == args[0])
+                .find(|&c| c.name == args[0] || c.alias.as_ref().map_or(false, |a| a == args[0]))
             {
                 found.locate_subcommand(args[1..].to_vec().as_ref())
             } else {
@@ -417,7 +432,7 @@ impl<'a> Command<'a> {
     pub fn run_sub(&self, app: &App, args: &[&str]) -> XcliResult {
         if !args.is_empty() {
             for cmd in &self.subcommands {
-                if args[0] == cmd.name {
+                if args[0] == cmd.name || cmd.alias.as_ref().map_or(false, |a| a == args[0]) {
                     return cmd.run_sub(app, args[1..].to_vec().as_ref());
                 }
             }
