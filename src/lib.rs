@@ -126,53 +126,44 @@ impl<'a> App<'a> {
     /// Create a new cli instance and return it
     pub fn new<S: Into<String>>(n: S) -> Self {
         // note we set the name of roor command to "", len = 0
-        let builtin_cmds = Command::new("")
-            .about("Interactive CLI")
-            .subcommand(
-                Command::new("tree")
-                    .about("prints the whole command tree")
-                    .usage("tree")
-                    .action(|app: &App, _| -> XcliResult {
+        let builtin_cmds =
+            Command::new("")
+                .about("Interactive CLI")
+                .subcommand(Command::new("tree").about("prints the whole command tree").usage("tree").action(
+                    |app: &App, _| -> XcliResult {
                         app.show_tree();
                         Ok(CmdExeCode::Ok)
-                    }),
-            )
-            .subcommand(
-                Command::new("mode")
-                    .about("manages the line editor mode, vi/emcas")
-                    .usage("mode [vi|emacs]")
-                    .action(cli_mode),
-            )
-            .subcommand(
-                Command::new_with_alias("log", "l")
-                    .about("manages log level filter")
-                    .usage("log [off|error|warn|info|debug|trace]")
-                    .action(cli_log),
-            )
-            .subcommand(
-                Command::new_with_alias("help", "h")
-                    .about("displays help information")
-                    .usage("help [command]")
-                    .action(cli_help),
-            )
-            .subcommand(
-                Command::new("exit")
-                    .about("quits CLI and exits to shell")
-                    .action(|_, _| -> XcliResult { Ok(CmdExeCode::Exit) }),
-            )
-            .subcommand(
-                Command::new_with_alias("version", "v")
-                    .about("shows version information")
-                    .action(|app, _| -> XcliResult {
-                        println!(
-                            "{}\n{}\n{}\n",
-                            app.get_name(),
-                            app.get_author(),
-                            app.get_version()
-                        );
+                    },
+                ))
+                .subcommand(
+                    Command::new("mode")
+                        .about("manages the line editor mode, vi/emcas")
+                        .usage("mode [vi|emacs]")
+                        .action(cli_mode),
+                )
+                .subcommand(
+                    Command::new_with_alias("log", "l")
+                        .about("manages log level filter")
+                        .usage("log [off|error|warn|info|debug|trace]")
+                        .action(cli_log),
+                )
+                .subcommand(
+                    Command::new_with_alias("help", "h")
+                        .about("displays help information")
+                        .usage("help [command]")
+                        .action(cli_help),
+                )
+                .subcommand(
+                    Command::new("exit")
+                        .about("quits CLI and exits to shell")
+                        .action(|_, _| -> XcliResult { Ok(CmdExeCode::Exit) }),
+                )
+                .subcommand(Command::new_with_alias("version", "v").about("shows version information").action(
+                    |app, _| -> XcliResult {
+                        println!("{}\n{}\n{}\n", app.get_name(), app.get_author(), app.get_version());
                         Ok(CmdExeCode::Ok)
-                    }),
-            );
+                    },
+                ));
 
         let rl = Rc::new(RefCell::new(Editor::<PrefixCompleter>::new()));
 
@@ -234,9 +225,7 @@ impl<'a> App<'a> {
     /// Get handler
     pub fn get_handler<S: Into<String>>(&self, key: S) -> stdResult<&IAny, XcliError> {
         let ks = key.into();
-        self.handlers
-            .get(&ks)
-            .ok_or(XcliError::MissingHandler(ks))
+        self.handlers.get(&ks).ok_or(XcliError::MissingHandler(ks))
     }
 
     /// Get the status return by args command
@@ -248,12 +237,8 @@ impl<'a> App<'a> {
     pub fn run(mut self) {
         info!("starting CLI loop...");
 
-        self.rl
-            .borrow_mut()
-            .set_completion_type(CompletionType::List);
-        self.rl
-            .borrow_mut()
-            .set_helper(Some(PrefixCompleter::new(&self.tree)));
+        self.rl.borrow_mut().set_completion_type(CompletionType::List);
+        self.rl.borrow_mut().set_helper(Some(PrefixCompleter::new(&self.tree)));
 
         if self.rl.borrow_mut().load_history("history.txt").is_err() {
             println!("No previous history.");
@@ -396,11 +381,7 @@ impl<'a> Command<'a> {
     /// show help message for command and its subs
     pub fn show_subcommand_help(&self) {
         for cmd in &self.subcommands {
-            println!(
-                "{:16}: {}",
-                cmd.get_description(),
-                cmd.usage.unwrap_or_else(|| cmd.name.as_ref())
-            )
+            println!("{:16}: {}", cmd.get_description(), cmd.usage.unwrap_or_else(|| cmd.name.as_ref()))
         }
     }
 
@@ -601,12 +582,7 @@ impl PrefixCompleter {
     }
 
     /// Build the command tree recursively
-    fn _print_tree(
-        node: &PrefixNode,
-        prefix: &str,
-        level: u32,
-        buf: &mut BufWriter<Vec<u8>>,
-    ) -> std::io::Result<()> {
+    fn _print_tree(node: &PrefixNode, prefix: &str, level: u32, buf: &mut BufWriter<Vec<u8>>) -> std::io::Result<()> {
         let mut level = level;
         if !node.name.is_empty() {
             write!(buf, "{}", prefix)?;
@@ -629,12 +605,7 @@ impl Completer for PrefixCompleter {
     type Candidate = String;
 
     /// Complete command
-    fn complete(
-        &self,
-        line: &str,
-        pos: usize,
-        _ctx: &rustyline::Context<'_>,
-    ) -> rustyline::Result<(usize, Vec<String>)> {
+    fn complete(&self, line: &str, pos: usize, _ctx: &rustyline::Context<'_>) -> rustyline::Result<(usize, Vec<String>)> {
         self.complete_cmd(line, pos)
     }
 }
@@ -682,13 +653,57 @@ fn cli_mode(app: &App, args: &[&str]) -> XcliResult {
             "vi" => app.rl.borrow_mut().set_edit_mode(EditMode::Vi),
             "emacs" => app.rl.borrow_mut().set_edit_mode(EditMode::Emacs),
             bad => {
-                return {
-                    Err(XcliError::BadArgument(bad.into()))
-                }
+                return Err(XcliError::BadArgument(bad.into()));
             }
         },
         _ => return Err(XcliError::BadSyntax),
     }
 
     Ok(CmdExeCode::Ok)
+}
+
+#[macro_export]
+macro_rules! check_param {
+    ($param_count:expr, $required:expr, $args:ident, ($($change_type:ty=>$has_from:expr), *)) => {
+        {
+            // has_from seems unnecessary in this macro.
+
+            use $crate::XcliError;
+            // use std::string::ToString;
+
+            // Param count is less than required param.
+            if ($param_count < $required) {
+                return Err($crate::XcliError::MissingArgument)
+            }
+
+            // Param count is less than args.
+            if ($param_count < $args.len()) {
+                return Err($crate::XcliError::BadArgument(("Input is too long").to_string()))
+            }
+
+            // Args count is less than required param.
+            if ($args.len() < $required) {
+                return Err($crate::XcliError::MismatchArgument($required, $args.len()))
+            }
+
+            let u = $args.clone().to_vec();
+            let mut number = 0;
+
+            (
+                $(
+                    {
+                        number += 1;
+                        // `try_from` the arg in [0, args.len()]
+                        if (number <= $args.len()) {
+                            let item = <$change_type>::try_from(u[number - 1]).map_err(|e|XcliError::BadArgument(e.to_string()))?;
+                            Some(item)
+                        } else {
+                            // return `None` if args.len() is less than param_count.
+                            None
+                        }
+                    },
+                )*
+            )
+        }
+    }
 }
