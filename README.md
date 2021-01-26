@@ -38,7 +38,7 @@ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-xcli = "0.5.1"
+xcli = "0.5.2"
 ```
 
 ## ChangeLog
@@ -60,3 +60,5 @@ xcli = "0.5.1"
         version, v      : version
         ```
       
+- 2021.1.25, v0.5.2
+    + Add macro `check_param!` to support type conversion.
