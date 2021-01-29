@@ -371,7 +371,7 @@ impl<'a> Command<'a> {
     /// show help message for command.
     pub fn show_command_help(&self) {
         println!(
-            "Command:     {}\nUsage:       {}\nDescription: {}",
+            "Command         : {}\nUsage           : {}\nDescription     : {}",
             self.get_description(),
             self.usage.unwrap_or_else(|| self.name.as_ref()),
             self.about.unwrap_or("")
@@ -381,7 +381,7 @@ impl<'a> Command<'a> {
     /// show help message for command and its subs
     pub fn show_subcommand_help(&self) {
         for cmd in &self.subcommands {
-            println!("{:16}: {}", cmd.get_description(), cmd.usage.unwrap_or_else(|| cmd.name.as_ref()))
+            println!("{:16}: {}", cmd.get_description(), cmd.about.unwrap_or_else(|| cmd.name.as_ref()))
         }
     }
 
