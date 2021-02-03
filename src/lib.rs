@@ -380,8 +380,9 @@ impl<'a> Command<'a> {
 
     /// show help message for command and its subs
     pub fn show_subcommand_help(&self) {
+        println!("SubCommands");
         for cmd in &self.subcommands {
-            println!("{:16}: {}", cmd.get_description(), cmd.about.unwrap_or_else(|| cmd.name.as_ref()))
+            println!("  {:16}: {}", cmd.get_description(), cmd.about.unwrap_or_else(|| cmd.name.as_ref()))
         }
     }
 
